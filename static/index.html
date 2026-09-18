@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Image Data Extractor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; color: #222; }
+  h1 { font-size: 1.5rem; }
+  #drop-zone {
+    border: 2px dashed #999; border-radius: 8px; padding: 40px; text-align: center;
+    color: #666; cursor: pointer; transition: border-color .2s;
+  }
+  #drop-zone.dragover { border-color: #3b82f6; color: #3b82f6; }
+  #preview { max-width: 100%; max-height: 300px; margin-top: 16px; display: none; border-radius: 6px; }
+  #provider-select { margin-top: 16px; padding: 8px; font-size: 1rem; border-radius: 6px; border: 1px solid #ccc; }
+  button { margin-top: 16px; padding: 10px 20px; font-size: 1rem; cursor: pointer; border: none; border-radius: 6px; background: #3b82f6; color: white; }
+  button:disabled { background: #93c5fd; cursor: not-allowed; }
+  pre { background: #f4f4f5; padding: 16px; border-radius: 6px; overflow-x: auto; white-space: pre-wrap; word-break: break-word; }
+  #status { margin-top: 12px; font-size: .9rem; }
+  .error { color: #dc2626; }
+</style>
+</head>
+<body>
+  <h1>Image Data Extractor</h1>
+  <p>Upload an image containing text (receipt, business card, document, etc.). The server will run OCR and return the extracted information as JSON.</p>
+
+  <div id="drop-zone">Click to choose an image, or drag &amp; drop it here</div>
+  <input type="file" id="file-input" accept="image/*" hidden />
+  <img id="preview" alt="Selected preview" />
+  <br />
+  <label for="provider-select">OCR provider:</label>
+  <select id="provider-select">
+    <option value="remote" selected>Remote (LightOnOCR-2)</option>
+    <option value="openai">OpenAI</option>
+  </select>
+  <br />
+  <button id="upload-btn" disabled>Extract Data</button>
+  <div id="status"></div>
+
+  <h2 id="ocr-heading" hidden>1. Raw OCR Output</h2>
+  <pre id="ocr-result" hidden></pre>
+
+  <h2 id="final-heading" hidden>2. Final Extracted Output</h2>
+  <pre id="final-result" hidden></pre>
+
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const preview = document.getElementById('preview');
+const uploadBtn = document.getElementById('upload-btn');
+const providerSelect = document.getElementById('provider-select');
+const statusEl = document.getElementById('status');
+const ocrHeading = document.getElementById('ocr-heading');
+const ocrResultEl = document.getElementById('ocr-result');
+const finalHeading = document.getElementById('final-heading');
+const finalResultEl = document.getElementById('final-result');
+let selectedFile = null;
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) setFile(fileInput.files[0]);
+});
+
+function setFile(file) {
+  selectedFile = file;
+  preview.src = URL.createObjectURL(file);
+  preview.style.display = 'block';
+  uploadBtn.disabled = false;
+  statusEl.textContent = '';
+  ocrHeading.hidden = true;
+  ocrResultEl.hidden = true;
+  finalHeading.hidden = true;
+  finalResultEl.hidden = true;
+}
+
+uploadBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+  uploadBtn.disabled = true;
+  statusEl.textContent = 'Processing...';
+  statusEl.className = '';
+  ocrHeading.hidden = true;
+  ocrResultEl.hidden = true;
+  finalHeading.hidden = true;
+  finalResultEl.hidden = true;
+
+  const formData = new FormData();
+  formData.append('file', selectedFile);
+
+  try {
+    const res = await fetch(`/api/extract?provider=${encodeURIComponent(providerSelect.value)}`, { method: 'POST', body: formData });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Request failed');
+    statusEl.textContent = 'Done.';
+
+    ocrResultEl.textContent = JSON.stringify(data.ocr_result, null, 2);
+    ocrHeading.hidden = false;
+    ocrResultEl.hidden = false;
+
+    finalResultEl.textContent = JSON.stringify(data.final_output, null, 2);
+    finalHeading.hidden = false;
+    finalResultEl.hidden = false;
+  } catch (err) {
+    statusEl.textContent = err.message;
+    statusEl.className = 'error';
+  } finally {
+    uploadBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
